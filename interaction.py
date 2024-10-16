@@ -1,4 +1,5 @@
 from SQL_command import SQL_db_connect
+from SQL_command import SQL_load_default
 from SQL_command import SQL_upload
 from SQL_command import SQL_overview
 from SQL_command import suggest_query
@@ -20,6 +21,7 @@ To start, please choose a dataset:
 x = input()
 
 conn = SQL_db_connect()
+SQL_load_default()
 dataset_name = ""
 if x=='1':
     print("\nLet's take a look at the Planets dataset.")
@@ -32,7 +34,7 @@ elif x=='3':
     dataset_name = "Spotify"
 elif x=='4':
     print("\nEnter URL of your dataset (SQL).")
-    dataset_name = "Custom"
+    dataset_name = "Your_Dataset"
     y = input()
     SQL_upload(y, dataset_name, conn)
 else:
