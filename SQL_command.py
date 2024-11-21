@@ -1,6 +1,6 @@
 import mysql.connector
 import seaborn as sns
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy import text
 import requests
 import pandas as pd
@@ -9,27 +9,42 @@ import numpy as np
 from pandas.api.types import is_string_dtype
 from pandas.api.types import is_numeric_dtype
 import re
+from sqlalchemy.types import Integer
+from nltk.tokenize import word_tokenize
+from random import sample
+
+# DATABASE SETUP
 
 engine = create_engine("mysql+mysqlconnector://root:password@localhost/chatDB")
+# engine = create_engine("mysql+mysqlconnector://chatdb:chatdbpassword@18.218.34.75/chatDB")
 
 def SQL_db_connect():
-    ''' Connect to chatDB database and return connection string. '''    
+    ''' connect to mySQL chatDB database '''
     connection = engine.connect()
+
     return connection
 
-def SQL_load_default():
-    ''' Loads Planets, Coffee, and Spotify as default datasets '''
-    planets = sns.load_dataset("planets")    
-    planets.to_sql('Planets', engine, if_exists='replace', index=False)
+def SQL_load_default(db_connection):
+    ''' reload default datasets and erase leftover uploads '''
     
-    coffee = pd.read_csv('coffee_shop_sales.csv')
-    coffee.to_sql('Coffee', engine, if_exists='replace', index=False)
+    imdb_top_1000_movie = pd.read_csv('imdb_top_1000_movie.csv')  
+    imdb_top_1000_movie.to_sql('imdb_movie', engine, if_exists='replace', index=False)
     
-    spotify = pd.read_csv('spotify_data.csv')
-    spotify.to_sql('Spotify', engine, if_exists='replace', index=False)
+    imdb_top_1000_tv = pd.read_csv('imdb_top_1000_tv.csv')
+    imdb_top_1000_tv.to_sql('imdb_tv', engine, if_exists='replace', index=False)
+    
+    netflix_movie_tv = pd.read_csv('netflix_movie_tv.csv')
+    netflix_movie_tv.to_sql('netflix', engine, if_exists='replace', index=False)
+
+    insp = inspect(engine)
+
+    for t in insp.get_table_names():
+        if t not in ['imdb_movie', 'imdb_tv', 'netflix']:
+            db_connection.execute(text(f'DROP TABLE IF EXISTS {t};'))
 
 def SQL_rename(custom_ds):
-    ''' Deals with columns= names containing non alphanumeric characters by replacing them with _'''
+    ''' fix formatting of custom uploaded datasets '''
+    
     column_names = []
     for i in range(len(custom_ds.columns)):
         name = custom_ds.columns[i]
@@ -42,185 +57,246 @@ def SQL_rename(custom_ds):
     return custom_ds
 
 def SQL_upload(url, name, db_connection):
-    ''' Upload new dataset inside database given URL. '''
+    ''' upload custom dataset '''
+    
     custom_ds = pd.read_csv(url)
     custom_ds = SQL_rename(custom_ds)
     custom_ds.to_sql(name, db_connection, if_exists='replace', index=False)
 
-def SQL_overview(db_connection, dataset_name):
-    ''' Give an initial overview of a dataset (# of rows, # of cols, first few entries) and return pandas dataframe. '''
-    myresult = db_connection.execute(text("SELECT * FROM " + dataset_name)).fetchall()
-    result_df = pd.DataFrame(myresult)
-    num_rows = result_df.shape[0]
-    num_cols = result_df.shape[1]
-    print("There are " + str(num_rows) + " rows and " + str(num_cols) + " columns.")
-    print("The first few entries look like this: \n")
-    return result_df
+def SQL_overview(db_connection):
+    ''' give overview of datasets '''
+    
+    insp = inspect(engine)
 
-def select_clause(attr_list): 
-    ''' Returns the SELECT clause of a SQL query. '''
-    if attr_list is None:
-        clause = ''
-    elif len(attr_list)==0:
-        clause = '*'
+    for t in insp.get_table_names():
+        myresult = db_connection.execute(text(f"SELECT * FROM {t} LIMIT 1;")).fetchall()
+        result_df = pd.DataFrame(myresult)
+        print(f'{t} has the following attributes: {list(result_df.columns)}')
+        print(f'The first entry look like this: {result_df}')
+        print('\n')
+
+def SQL_get_columns(db_connection, dataset_name):
+    ''' view column names and types '''
+    
+    myresult = [col[:2] for col in db_connection.execute(text("SHOW COLUMNS FROM " + dataset_name)).fetchall()]
+    return myresult
+
+def SQL_view_column(db_connection, dataset_name, col_name):
+    ''' view a column '''
+    
+    SQL_command = "SELECT " + col_name + " FROM " + dataset_name
+    myresult = db_connection.execute(text(SQL_command)).fetchall()
+    return pd.DataFrame(myresult)
+
+# CLAUSES
+
+def join_clause(tables, kind, condition):
+    output = f"{tables[0]} t1 {kind} join {tables[1]} t2"
+    if kind != 'cross':
+        output += f" on t1.{condition[0]} {condition[2]} t2.{condition[1]}"
+    return output
+
+def from_clause(table):
+    return 'FROM ' + table
+
+def filter_clause(attr, operator, val, is_val_str):
+    if val is None:
+        if operator == '=':
+            operator = 'is'
+        else:
+            operator = 'is not'
+        val = 'None'
     else:
-        clause = ', '.join(attr_list)
-    return 'SELECT ' + clause
+        if is_val_str:
+            val = "'" + str(val).replace("'", "''") + "'"
+    return f'{attr} {operator} {val}'
 
-def agg_clause(attr_list, aggregator, operator = '', rename = ''):
-    ''' Returns the aggregate portion of the SELECT clause of a SQL query. '''
-    if len(attr_list)==0:
-        return ''
-
-    clause = (' ' + operator + ' ').join(attr_list)
-    clause = aggregator + "(" + clause + ")"
-    
-    if rename:
-        clause += ' AS ' + rename
-    
-    return clause
-
-def from_clause(table_name):
-    ''' Returns the FROM clause of a SQL query. '''
-    return 'FROM ' + table_name
-
-def where_clause(attr, operator, val, is_string_type = False):
-    ''' Returns the WHERE clause of a SQL query. '''
-    if len(attr)==0:
-        return ''
-    if is_string_type:
-        val = "'" + str(val).replace("'", "''") + "'"
-    return 'WHERE ' + attr + ' ' + operator + ' ' + str(val)
+def where_clause(filter):
+    return 'WHERE ' + filter
 
 def groupby_clause(attr_list):
-    ''' Returns the GROUP BY clause of a SQL query. '''
-    if len(attr_list)==0:
-        return ''
     clause = ', '.join(attr_list)
     return 'GROUP BY ' + clause
 
-def orderby_clause(attr_list, direction = 'ASC'):
-    ''' Returns the ORDER BY clause of a SQL query. '''
-    if len(attr_list)==0:
-        return ''
-    clause = ', '.join(attr_list)
-    return 'ORDER BY ' + clause + ' ' + direction
+def agg_clause(attrs, aggregator, operator, rename):
+    output = (f' {operator} ').join(attrs)
+    output = f'{aggregator}({output})'
+    if rename:
+        output += f' AS {rename}'
+    
+    return output
 
-def suggest_query(select_attr_list = [], 
-                     agg_attr_list = [], agg_aggregator = '', agg_operator = '', agg_rename = '',
-                     from_table = '', 
-                     where_attr = '', where_operator = '', where_val = '', where_type = False,
-                     groupby_attr_list = [], 
-                     orderby_attr_list = [], orderby_direction = ''):
-    ''' Constructs a complete SQL query and returns it as a string. '''
+def select_clause(attrs, all): 
+    if all:
+        content = '*'
+    else:
+        content = ', '.join(attrs)
 
-    s1 = select_clause(select_attr_list)
-    s2 = agg_clause(agg_attr_list, agg_aggregator, agg_operator, agg_rename)
-    f = from_clause(from_table)
-    w = where_clause(where_attr, where_operator, where_val, where_type)
-    g = groupby_clause(groupby_attr_list)
-    o = orderby_clause(orderby_attr_list, orderby_direction)
+    return 'SELECT ' + content
 
-    result = ''
-    for clause in [s1, s2, f, w, g, o]:
-        if len(clause)==0:
-            continue
-        elif (clause == s2):
-            if result[-1]!=' ':
-                result += ', ' + s2
-            else:
-                result += s2
-        else:
-            result += '\n' + clause
+def orderby_clause(attr_direction):
+    content = [f'{a} {d}' for a, d in attr_direction.items()]
+    content = ', '.join(content)
+    return 'ORDER BY ' + content
 
-    return (result + ';').strip()
+def limit_clause(num):
+    return 'LIMIT ' + str(num)
+
+# NLP AND QUERY CONSTRUCTION
 
 def execute_query(db_connection, query_string):
-    ''' Executes a complete SQL query given the query string. '''
-    print(db_connection)
     myresult = db_connection.execute(text(query_string)).fetchall()
     return pd.DataFrame(myresult)
 
-def random_query(df, dataset_name):
-    ''' Generates a random query as if no useful natural language input given by user '''
-    n_cols = df.shape[1]
-    cols = df.columns
+def construct_where(db_connection, param_dict = None):
+    s, f, w, w1, w2, lo = '', '', '', '', '', '' 
 
-    #SELECT
-    select_attr_list = np.random.choice(cols, size=np.random.choice(range(0,n_cols)), replace=False)
+    if param_dict is None:
+        # pick random table from database
+        insp = inspect(engine)
+        table = sample(insp.get_table_names(), 1)[0]
+        f = from_clause(table)
 
-    #WHERE
-    where_attr = ''
-    if len(select_attr_list)==0:
-        where_attr = np.random.choice(cols)
-    else:
-        where_attr = np.random.choice(select_attr_list)
-    where_val = np.random.choice(df[where_attr].dropna())
-    if is_string_dtype(df[where_attr]):
-        where_type = True
-        where_operator = np.random.choice(['=', '<>'])
-    else:
-        where_type = False
-        where_operator = np.random.choice(['=', '>', '<', '>=', '<=', '<>'])
+        # see columns 
+        cols = SQL_get_columns(db_connection, table)
+        n = len(cols)
 
-    #GROUP BY
-    group_or_not = np.random.choice([0,1])
-    if group_or_not==1:
-        groupable_col = ''
-        min_unique = np.inf
-        for col in df.columns:
-            num_vals = len(df[col].unique())
-            if num_vals < min_unique:
-                groupable_col = col
-                min_unique = min(min_unique, num_vals)
-        groupby_attr_list = [groupable_col]
-    else:
-        groupby_attr_list = []
+        # pick random column and value
+        attr = sample(cols, 1)[0]
+        where_attr = SQL_view_column(db_connection, table, attr[0])
+        where_val = np.random.choice(where_attr.iloc[:, 0].dropna())
 
-    #AGG
-    numeric_attr = df.select_dtypes(include=np.number).columns
-    non_numeric_attr = df.select_dtypes(exclude=np.number).columns
-    numeric_or_not = np.random.choice([0,1])
-
-    if len(groupby_attr_list) == 0:
-        min_num_agg = 0
-    else:
-        min_num_agg = 1
-        
-    if numeric_or_not == 0:
-        agg_attr_list = [np.random.choice(non_numeric_attr)]
-        agg_aggregator = np.random.choice(['MAX', 'MIN', 'COUNT']) 
-    else:
-        agg_attr_list = np.random.choice(numeric_attr, size=np.random.choice(range(min_num_agg, numeric_attr.shape[0])), replace=False)
-        agg_aggregator = np.random.choice(['MAX', 'MIN', 'COUNT', 'AVG', 'SUM'])
-    
-    if len(agg_attr_list) > 0:
-        if min_num_agg == 1:
-            select_attr_list = [groupable_col]
+        # pick random operator
+        if attr[1] == 'text':
+            where_type = True
+            where_operator = sample(['=', '<>'], 1)[0]
         else:
-            select_attr_list = None
-        
-    agg_operator = np.random.choice(['+', '-', '*'])
-    agg_rename = np.random.choice(['aggregate', ''])
+            where_type = False
+            where_operator = sample(['=', '>', '<', '>=', '<=', '<>'], 1)[0]
 
-    #ORDER BY
-    if select_attr_list is None:
-        orderby_attr_list = []
-    elif len(select_attr_list)==0:
-        orderby_attr_list = [np.random.choice(cols)]
+        # pick random projection
+        attrs = sample([col[0] for col in cols], sample(range(1, n-1), 1)[0])
+        s = select_clause(attrs, all = sample([True, False], 1)[0])
+
+        # construct query
+        w = where_clause(filter_clause(attr[0], where_operator, where_val, where_type))
+    else: 
+        # projection and table
+        if len(param_dict['project']) > 0:
+            s = select_clause(param_dict['project'], False)
+        else:
+            s = select_clause(param_dict['project'], True)
+        f = from_clause(param_dict['table'])
+
+        # where filters
+        w1 = filter_clause(param_dict['filter1'][0], param_dict['filter1'][1], 
+                         param_dict['filter1'][2], param_dict['filter1'][3])
+        if param_dict['filter2']:
+            w2 = filter_clause(param_dict['filter2'][0], param_dict['filter2'][1], 
+                             param_dict['filter2'][2], param_dict['filter2'][3])
+            lo = param_dict['log_op']
+
+        # construct query
+        w = where_clause(f'{w1} {lo} {w2}')
+    
+    return '\n'.join([s, f, w]).strip() + ';'
+
+def nlp_execute_where(prompt, db_connection):
+    if prompt.endswith('where'):
+        learned_params = None
     else:
-        orderby_attr_list = [np.random.choice(select_attr_list)]
-    orderby_direction = np.random.choice(['ASC', 'DESC'])
+        learned_params = {'table': False,
+                  'filter1': False,
+                  'filter2': False,
+                  'log_op': False,
+                  'project': False,
+                 }
+        if prompt.startswith('all columns'):
+            learned_params['project'] = []
+        else:
+            learned_params['project'] = prompt.split('from')[0].strip().split(', ')
+    
+        insp = inspect(engine)
+        for table in insp.get_table_names():
+            if table in prompt:
+                learned_params['table'] = table
+                break
+    
+        where = prompt.split('where')[1].strip()
+        filters = []
+        for log_op in ['and', 'or']:
+            if log_op in where.split(' '):
+                learned_params['log_op'] = log_op
+                filters = where.split(log_op)
+            else:
+                filters.append(where)
+            break
+        for i in range(len(filters)):
+            done = False
+            for op in operator_dict:
+                for phrase in operator_dict[op]:
+                    if phrase in filters[i]:
+                        cols = SQL_get_columns(db_connection, table)
+                        for col in cols:
+                            filter = filters[i].strip().split(' ')
+                            if col[0] == filter[0]:
+                                is_string = col[1] == 'text'
+                                learned_params[f'filter{i + 1}'] = [filter[0], op, filter[-1], is_string]
+                                break
+                        done = True
+                        break
+                if done:
+                    break
+    query_string = construct_where(db_connection, learned_params)
+    query_result = execute_query(db_connection, query_string)
+    return query_string, query_result
 
-    #QUERY
-    query_string = suggest_query(select_attr_list = select_attr_list, 
-                     agg_attr_list = agg_attr_list, agg_aggregator = agg_aggregator, agg_operator = agg_operator, agg_rename = agg_rename,
-                     from_table = dataset_name, 
-                     where_attr = where_attr, where_operator = where_operator, where_val = where_val, where_type = where_type,
-                     groupby_attr_list = groupby_attr_list, 
-                     orderby_attr_list = orderby_attr_list, orderby_direction = orderby_direction)
-    print(query_string)
-    return query_string
+def clean_prompt(prompt):
+    prompt = prompt.lower()
+    prompt = prompt.split(' ')
+    return prompt
+
+keywords = ['group by', 'join', 'where', 'order by', 'limit']
+
+def identify_keyword(prompt):
+    for k in keywords:
+        if k in prompt.split(' '):
+            return k
+
+operator_dict = {'=': ['equal'], '<>': ['not equal'], '>': ['greater', 'later', 'larger', 'bigger', 'more', 'after'], 
+                 '<': ['less', 'smaller', 'earlier', 'fewer', 'before']}
+
+def respond(prompt, db_connection):
+    kw = identify_keyword(prompt)
+    if kw == 'where':
+        return nlp_execute_where(prompt, db_connection)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
