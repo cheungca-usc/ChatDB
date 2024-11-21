@@ -1,4 +1,4 @@
-from SQL_command import SQL_db_connect, SQL_load_default, SQL_rename, SQL_upload, SQL_overview, SQL_get_columns, SQL_view_column, join_clause, from_clause, filter_clause, where_clause, groupby_clause, agg_clause, select_clause, orderby_clause, limit_clause, execute_query, construct_where, nlp_execute_where, clean_prompt, identify_keyword, respond
+from SQL_command import SQL_db_connect, SQL_load_default, SQL_rename, SQL_upload, SQL_overview, SQL_get_columns, SQL_view_column, join_clause, from_clause, filter_clause, where_clause, groupby_clause, agg_clause, select_clause, orderby_clause, limit_clause, execute_query, construct_where, nlp_execute_where, construct_orderby, nlp_execute_orderby, construct_limit, nlp_execute_limit, construct_join, nlp_execute_join, construct_groupby, nlp_execute_groupby, clean_prompt, identify_keyword, respond
 
 conn = SQL_db_connect()
 SQL_load_default(conn)
@@ -10,7 +10,7 @@ To start, please choose a database:
 2) NoSQL
 ''')
 
-db_type = ""
+db_type = ''
 
 x = input()
 if x=='1':
@@ -38,6 +38,7 @@ else:
 
 x = input()
 # example SQL url: https://raw.githubusercontent.com/cheungca-usc/ChatDB/refs/heads/main/spotify_data.csv
+
 while x:
     if x == 'no':
         break
@@ -61,16 +62,16 @@ while True:
         break
     
     try:    
-        print("\nHere are some possible SQL queries to fit your request.\n")
-        print("Command:")
-    
-        conn = SQL_db_connect()
-        response = respond(x, conn)
-        print(response[0])
-    
-        print("\nOutput:")
-        print(response[1])
-        conn.close()
+        if db_type == 'SQL':
+            print("\nHere is a SQL query to fit your request.\n")
+            print("Command:")
+            response = respond(x, conn)
+            print(response[0])
+            print("\nOutput:")
+            print(response[1])
+        else:
+            print('MongoDB placeholder')
+        
     except:
         print("I did not recognize that. Please try a different prompt.")
         
@@ -79,5 +80,6 @@ while True:
 
 print("Goodbye!")
 
+conn.close()
 
 
