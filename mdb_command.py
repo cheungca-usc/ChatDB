@@ -8,7 +8,7 @@ import sys
 from random import sample
 #connect to MongoDB
 def MDB_db_connect():
-    client = MongoClient('mongodb://localhost:27017/')
+    client = MongoClient('mongodb+srv://ChatDB:ChatDBpasswd@chatdb.sjqwx.mongodb.net/?retryWrites=true&w=majority&appName=ChatDB')
     db = client['chatDB']
     return db
 
