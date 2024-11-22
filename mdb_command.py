@@ -2,234 +2,28 @@ import datetime
 import random
 
 import pandas as pd
+import numpy as np
 from pymongo import MongoClient
 import sys
-import seaborn as sns
+from random import sample
+#connect to MongoDB
+def MDB_db_connect():
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['chatDB']
+    return db
 
+def MDB_overview(db):
+    collections = db.list_collection_names()
 
-def convert_to_double(value):
-    try:
-        return float(value)
-    except ValueError:
-        return value
-
-
-def convert_to_int(value):
-    try:
-        return int(value)
-    except ValueError:
-        return value
-
-
-def delete_value(target_dataframe,option, key, operator, value):
-    value = convert_to_double(value)
-    query = build_query(key, operator, value)
-    if option == "one":
-        result = target_dataframe.delete_one(query)
-        if result.deleted_count > 0:
-            print("Document deleted successfully.")
+    for collection_name in collections:
+        collection = db[collection_name]
+        first_document = collection.find_one()
+        if first_document:
+            df = pd.DataFrame([first_document])
+            print(f'{collection_name} has the following attributes: {list(df.columns)}')
+            print(f'The first entry looks like this:\n{df}\n')
         else:
-            print("No matching document found to delete.")
-    if option == "many":
-        result = target_dataframe.delete_many(query)
-        if result.deleted_count > 0:
-            print(f" {result.deleted_count} Document deleted successfully.")
-        else:
-            print("No matching document found to delete.")
-
-
-# add eq neq gt lt lte in nin
-def build_query(key, operator, value):
-    operator_mapping = {
-        "equal": "$eq",
-        "not_equal": "$ne",
-        "greater": "$gt",
-        "greater_equal": "$gte",
-        "less": "$lt",
-        "less_equal": "$lte",
-        "in": "$in",
-        "not_in": "$nin"
-    }
-
-    if operator in operator_mapping:
-        mongo_operator = operator_mapping[operator]
-
-        if mongo_operator in ["$in", "$nin"]:
-            if isinstance(value, str):
-                value = value.split(",")
-            elif not isinstance(value, list):
-                raise ValueError("The 'in' and 'not_in' operators require a list or comma-separated string.")
-
-        return {key: {mongo_operator: value}}
-    else:
-        print(
-            "Invalid operator. Available operators are: equal, not_equal, greater, greater_equal, less, less_equal, in, not_in.")
-        return None
-
-
-def find_all(target_dataframe,command, key, value, operator):
-    value = convert_to_double(value)
-    query = build_query(key, operator, value)
-    if command == "find_all":
-        result = list(target_dataframe.find(query, {'_id': 0}))
-        data = pd.DataFrame(result)
-    else:
-        result = target_dataframe.find_one(query, {'_id': 0})
-        value = list(result.values())
-        col = list(result.keys())
-        data = pd.DataFrame([value], columns=col)
-    if result:
-        print(data)
-    else:
-        print("No matching query")
-
-
-def find_limit(target_dataframe,key, value, operator, limit_num):
-    value = convert_to_double(value)
-    query = build_query(key, operator, value)
-    result = list(target_dataframe.find(query, {'_id': 0}).limit(convert_to_int(limit_num)))
-    data = pd.DataFrame(result)
-    if result:
-        print("Query find:")
-        print(data)
-    else:
-        print("No matching query")
-
-
-# def find_sort(key, value, operator, sortby, order):
-#     order = convert_to_int(order)
-#     value = convert_to_double(value)
-#     if order == 1 or order == -1:
-#         results = target_dataframe.find({}, {'_id': 0}).sort(sortby, order)
-#         data = pd.DataFrame(results)
-#         print(data)
-#     else:
-#         print("Not valid order")
-
-def groupby_option(pipeline, option, A, B):
-    group_stage = {"$group": {"_id": {b: f"${b}" for b in B}}}
-    if option == "avg":
-        for a in A:
-            group_stage["$group"]["avg_" + a] = {"$avg": f"${a}"}
-        pipeline.append(group_stage)
-        pipeline.append({'$project': {**{b: f"$_id.{b}" for b in B}, **{f"avg_{a}": 1 for a in A}, '_id': 0}})
-    elif option == "sum" or "total":
-        for a in A:
-            group_stage["$group"]["total_" + a] = {"$sum": f"${a}"}
-        pipeline.append(group_stage)
-        pipeline.append({
-            '$project': {
-                **{field: f"$_id.{field}" for field in B},
-                **{f"total_{a}": 1 for a in A},
-                '_id': 0
-            }
-        })
-        # todo miss title
-    elif option == "count":
-        for a in A:
-            group_stage["$group"]["count_" + a] = {"$sum": 1}
-        pipeline.append(group_stage)
-        pipeline.append({
-            '$project': {
-                **{b: 1 for b in B},
-                **{f"count_{a}": 1 for a in A},
-                '_id': 0
-            }
-        })
-    else:
-        print("Invalid option. Choose from 'avg', 'sum', or 'count'.")
-        return None
-    return pipeline
-
-
-def suggest_query(select_attr_list,
-                  from_table,
-                  where_key=None, where_operator=None, where_val=None,
-                  groupby_attr_list=None,
-                  agg_attr_list=None, agg_aggregator=None,
-                  orderby_attr_list=None, orderby_direction=None,
-                  skip = None, limit =None):
-    pipeline = []
-
-    if where_key and where_operator and where_val:
-        query = build_query(where_key, where_operator, where_val)
-        match_stage = {
-            "$match":query
-        }
-        pipeline.append(match_stage)
-
-    if groupby_attr_list:
-        pipeline = groupby_option(pipeline, agg_aggregator, agg_attr_list, groupby_attr_list)
-
-    # If there is a select list, add a $project stage
-    if select_attr_list:
-        project_stage = {"$project": {}}
-        for attr in select_attr_list:
-            project_stage["$project"][attr] = 1
-        project_stage["$project"]["_id"] = 0
-        pipeline.append(project_stage)
-
-    # If there is an ORDER BY clause, add a $sort stage
-    if orderby_attr_list and orderby_direction:
-        sort_stage = {"$sort": {}}
-        direction = 1 if orderby_direction.lower() == "asc" else -1
-        for attr in orderby_attr_list:
-            sort_stage["$sort"][attr] = direction
-        pipeline.append(sort_stage)
-
-    if skip is not None:
-        pipeline.append({"$skip": convert_to_int(skip)})
-    if limit is not None:
-        pipeline.append({"$limit": convert_to_int(limit)})
-
-    results = from_table.aggregate(pipeline)
-    data = pd.DataFrame(results)
-    return data
-
-
-def find_sort(target_dataframe,key, value, operator, sortby, order):
-    suggest_query(select_attr_list=key, from_table=target_dataframe,where_key=key, where_val=value, where_operator=operator,
-                  orderby_attr_list=sortby, orderby_direction=order)
-
-
-def update_option(target_dataframe,option1, option2, key1, operator, value1, key2, value2):
-    global results
-    value2 = convert_to_double(value2)
-    value1 = convert_to_double(value1)
-    query1 = build_query(key1, operator, value1)
-
-    update_operation = {key2: value2}
-
-    if option2 == "set":
-        update = {"$set": update_operation}
-    elif option2 == "inc":
-        update = {"$inc": update_operation}
-    elif option2 == "unset":
-        update = {"$unset": update_operation}
-    elif option2 == "push":
-        update = {"$push": update_operation}
-    elif option2 == "pull":
-        update = {"$pull": update_operation}
-    elif option2 == "addToSet":
-        update = {"$addToSet": update_operation}
-    elif option2 == "rename":
-        update = {"$rename": update_operation}
-    elif option2 == "mul":
-        update = {"$mul": update_operation}
-    else:
-        raise ValueError("Unsupported update option")
-
-    if option1 == "one":
-        results = target_dataframe.update_one(query1, update)
-    if option1 == "many":
-        results = target_dataframe.update_many(query1, update)
-    if results.modified_count > 0:
-        print("Document updated successfully.")
-        find_all("find_all", key1, value1, operator)
-    else:
-        print("No document was updated.")
-
-
+            print(f'{collection_name} is empty.\n')
 def convert_time_columns(df):
     for col in df.columns:
         if df[col].dtype == 'object':
@@ -243,105 +37,350 @@ def MDB_upload(url,db,name):
     customized_data = db[name]
     customized_data.insert_many(df.to_dict('records'))
     return customized_data
-def MDB_connect():
-    client = MongoClient('mongodb://localhost:27017/')
-    db = client['chatDB']
-    return db
-def choose_one_randon_field(db):
-    doc = db.find_one()
-    field_names = [key for key in doc.keys() if key != '_id']
-    random_field = random.choice(field_names)
-    return random_field
 
-def generate_random_query(target_dataframe):
-    select_attr_list = []
-    select_attr_list.append(choose_one_randon_field(target_dataframe))
-    print(select_attr_list)
-    from_table = target_dataframe
-    where_attr = choose_one_randon_field(target_dataframe)
-    operators = ["equal",
-        "not_equal",
-        "greater",
-        "greater_equal",
-        "less",
-        "less_equal"]
-    where_operator = random.choice(operators)
-    doc = db.find_one()
-    where_val = doc[where_attr]
-    groupby_attr_list = None
-    agg_attr_list = None
-    agg_aggregator = None
-    orderby_attr_list = choose_one_randon_field(target_dataframe)
-    orderby_direction = random.choice(['asc','desc'])
-    print(suggest_query(select_attr_list, from_table, where_attr, where_operator, where_val,
-                        groupby_attr_list, agg_attr_list, agg_aggregator,
-                        orderby_attr_list, orderby_direction, None, None))
+def nlp_execute_find(prompt, db):
+    try:
+        # Initialize parameters
+        learned_params = {
+            'collection': '',
+            'query': {},
+            'projection': None
+        }
 
+        # Parse the prompt
+        if prompt.strip().endswith('find'):
+            # Randomly pick a collection if the prompt is ambiguous
+            collections = db.list_collection_names()
+            if not collections:
+                raise ValueError("No collections found in the database.")
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python script.py [operation] [arguments]")
-        sys.exit(1)
-    db =MDB_connect()
-    collection_coffee_data = db['Coffee']
-    collection_spotify_data = db['Spotify']
+            # Randomly pick a collection
+            learned_params['collection'] = random.choice(collections)
 
-    collection_planet_data = db['Planets']
-    target_dataframe = collection_spotify_data
-
-    command = sys.argv[1].lower()
-
-    if command == "find_all" or command == "find_one":
-        key = sys.argv[2]
-        value = sys.argv[4]
-        operator = sys.argv[3]
-        find_all(target_dataframe,command, key, value, operator)
-
-    if command == "find_limit":
-        key = sys.argv[2]
-        value = sys.argv[4]
-        operator = sys.argv[3]
-        limit_num = sys.argv[5]
-        find_limit(target_dataframe,key, value, operator, limit_num)
-
-    if command == "find_sort":
-        key = sys.argv[2]
-        value = sys.argv[4]
-        operator = sys.argv[3]
-        sortby = sys.argv[5]
-        order = sys.argv[6]
-        find_sort(target_dataframe,key, value, operator, sortby, order)
-
-    if command == "delete":
-        option = sys.argv[2]
-        key = sys.argv[3]
-        value = sys.argv[4]
-        delete_value(target_dataframe,option, key, value)
-
-    if command == "groupby":
-        option = sys.argv[2]
-        A = sys.argv[3]
-        if option == "count":
-            B = ""
         else:
-            B = sys.argv[4:]
+            # Extract the collection from the prompt
+            collections = db.list_collection_names()
+            for collection in collections:
+                if collection in prompt:
+                    learned_params['collection'] = collection
+                    break
 
-        pipeline = groupby_option([], option, ["transaction_qty"], ["store_location", "transaction_date"])
-        # pipeline = groupby_option([],option,A,["store_location","transaction_date"])
-        results = target_dataframe.aggregate(pipeline)
-        data = pd.DataFrame(results)
-        print(data)
+            # Extract conditions from the prompt
+            query_part = prompt.split('where')[-1].strip() if 'where' in prompt else ''
+            operator_dict = {
+                'greater than': '$gt',
+                'less than': '$lt',
+                'equal to': '$eq',
+                'not equal to': '$ne'
+            }
 
-    if command == "update":
-        option1 = sys.argv[2]
-        option2 = sys.argv[3]
-        key1 = sys.argv[4]
-        operator = sys.argv[5]
-        value1 = sys.argv[6]
-        key2 = sys.argv[7]
-        value2 = sys.argv[8]
-        update_option(target_dataframe,option1, option2, key1, operator, value1, key2, value2)
+            for operator, mongo_op in operator_dict.items():
+                if operator in query_part:
+                    parts = query_part.split(operator)
+                    field = parts[0].strip()
+                    value = parts[1].strip()
 
-    if command == "suggest":
-        generate_random_query(target_dataframe)
+                    # Attempt to cast the value to a number if possible
+                    try:
+                        value = float(value) if '.' in value else int(value)
+                    except ValueError:
+                        pass  # Leave it as a string
+
+                    learned_params['query'][field] = {mongo_op: value}
+                    break
+
+        # Generate the MongoDB find command
+        find_command = f"db.{learned_params['collection']}.find({learned_params['query']})"
+        if learned_params['projection']:
+            find_command += f", {learned_params['projection']}"
+
+        # Execute the find query
+        collection = db[learned_params['collection']]
+        find_result = list(collection.find(learned_params['query'], learned_params['projection']))
+
+        return find_command, find_result
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None, []
+
+def nlp_execute_limit(prompt, db):
+    if prompt.endswith('limit'):
+        collections = db.list_collection_names()
+        collection = sample(collections, 1)[0]
+
+        # Randomly select fields for projection
+        all_fields = db[collection].find_one()
+        if not all_fields:
+            raise ValueError(f"The collection '{collection}' is empty.")
+        projection_fields = sample(list(all_fields.keys()), random.randint(1, len(all_fields)))
+        projection = {field: 1 for field in projection_fields}
+
+        # Randomly select a limit
+        limit = random.randint(1, 10)
+    else:
+        # Default learned parameters
+        learned_params = {'collection': '', 'limit': None, 'projection': []}
+
+        # Parse the prompt for limit
+        words = prompt.lower().split()
+        if 'limit' in words:
+            index = words.index('limit')
+            learned_params['limit'] = int(words[index + 1]) if words[index + 1].isdigit() else None
+
+        if 'limited' in words:
+            index = words.index('limited')
+            learned_params['limit'] = int(words[index + 1]) if words[index + 1].isdigit() else None
+
+        collections = db.list_collection_names()
+        for collection in collections:
+            if collection in prompt:
+                learned_params['collection'] = collection
+                break
+
+        if 'columns' in words:
+            columns_index = words.index('columns')
+            columns = prompt.split('columns')[1].split('from')[0].strip()
+            learned_params['projection'] = [col.strip() for col in columns.split(',')]
+
+        collection = learned_params['collection']
+        projection = {field: 1 for field in learned_params['projection']} if learned_params['projection'] else None
+        limit = learned_params['limit']
+
+        # Build MongoDB command
+    query = {}
+    command = f"db.{collection}.find({query}, {projection}).limit({limit})"
+
+    # Execute the query
+    collection_obj = db[collection]
+    results = list(collection_obj.find(query, projection).limit(limit))
+
+    return command, results
+
+
+def nlp_execute_groupby(prompt, db):
+    try:
+        # Define operation map for aggregation (e.g., count, sum, avg)
+        operation_map = {
+            'count': '$count',
+            'sum': '$sum',
+            'average': '$avg',
+            'avg': '$avg',
+            'total': '$sum',
+            'minimum': '$min',
+            'min': '$min',
+            'maximum': '$max',
+            'max': '$max'
+        }
+
+        # Initialize learned parameters
+        learned_params = {
+            'collection': '',
+            'groupby_field': '',
+            'aggregation_field': '',
+            'operation': '$avg'  # Default to average
+        }
+
+        # List collections in the database
+        collections = db.list_collection_names()
+
+        # Handle ambiguous prompts
+        if prompt.strip().endswith("groupby"):
+            learned_params['collection'] = random.choice(collections)
+            fields = db[learned_params['collection']].find_one().keys()
+            learned_params['groupby_field'] = random.choice([f for f in fields if f != "_id"])
+            learned_params['aggregation_field'] = random.choice(fields)
+            learned_params['operation'] = random.choice(list(operation_map.values()))
+        else:
+            # Extract collection name (e.g., "iris")
+            for collection in collections:
+                if collection in prompt:
+                    learned_params['collection'] = collection
+                    break
+
+            # Extract groupby field (e.g., "class")
+            if "group by" in prompt.lower():
+                groupby_start = prompt.split("group by")[1].strip()
+                learned_params['groupby_field'] = groupby_start.split()[0]# Get the part after "group by"
+            elif "group" in prompt.lower():
+                groupby_start = prompt.split("group")[1].strip()  # Get the part after "group"
+                learned_params['groupby_field'] = groupby_start.split()[2]
+
+            # Identify operation (e.g., "average")
+            for keyword, op in operation_map.items():
+                if keyword in prompt.lower():
+                    learned_params['operation'] = op
+                    if keyword != 'count':  # If not count, we need an aggregation field
+                        aggregation_field_start = prompt.split(f"{keyword} of")[1].strip().split()[0]
+                        learned_params['aggregation_field'] = aggregation_field_start
+                    break
+
+
+        # Correct handling of multi-word attributes like "sepal width"
+        groupby_field = learned_params['groupby_field']
+        aggregation_field = learned_params['aggregation_field']
+
+
+        # Construct the MongoDB aggregation pipeline with correct field reference
+        if learned_params['operation'] == '$count':
+            pipeline = [{
+                "$group": {
+                    "_id": f"${groupby_field}",  # Group by the specified field
+                    "result": {
+                        "$sum": 1  # Count the documents in each group
+                    }
+                }
+            }]
+        else:
+            pipeline = [
+            {"$group": {
+                "_id": f"${groupby_field}",  # group by field
+                "result": {
+                    learned_params['operation']: f"${aggregation_field}"  # reference aggregation field
+                }
+            }}
+        ]
+        print(pipeline)
+        # Generate the aggregation command
+        aggregation_command = f"db.{learned_params['collection']}.aggregate({pipeline})"
+
+        # Execute the aggregation query
+        collection = db[learned_params['collection']]
+        aggregation_result = list(collection.aggregate(pipeline))
+
+        return aggregation_command, aggregation_result
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None, []
+
+def nlp_execute_orderby(prompt, db):
+    try:
+        # Initialize parameters
+        learned_params = {'collection': '', 'field': '', 'order': ''}
+
+        # Handle case where the prompt ends with "orderby"
+        if prompt.strip().endswith('orderby'):
+            collections = db.list_collection_names()
+            if not collections:
+                raise ValueError("No collections found in the database.")
+            # Randomly pick a collection
+            learned_params['collection'] = random.choice(collections)
+
+            # Fetch columns (keys) from the collection
+            sample_doc = db[learned_params['collection']].find_one()
+            if not sample_doc:
+                raise ValueError(f"The collection '{learned_params['collection']}' is empty.")
+
+            keys = list(sample_doc.keys())
+            keys.remove('_id')  # Exclude '_id' from ordering
+
+            # Randomly pick a field for ordering
+            learned_params['field'] = random.choice(keys)
+
+            # Randomly pick an order (ascending or descending)
+            learned_params['order'] = random.choice(['asc', 'desc'])
+
+        else:
+            # Parse the prompt for collection, field, and order details
+            collections = db.list_collection_names()
+            for collection in collections:
+                if collection in prompt:
+                    learned_params['collection'] = collection
+                    break
+
+            for kw in ['by']:
+                if kw in prompt:
+                    learned_params['field'] = prompt.split(kw)[1].strip().split(' ')[0]
+                    break
+
+            if 'asc' in prompt or 'ascending' in prompt:
+                learned_params['order'] = 'asc'
+            elif 'desc' in prompt or 'descending' in prompt:
+                learned_params['order'] = 'desc'
+            else:
+                learned_params['order'] = 'asc'  # Default to ascending
+
+        sort_order = 1 if learned_params['order'] == 'asc' else -1
+        find_command = f"db.{learned_params['collection']}.find().sort({{{learned_params['field']}: {sort_order}}})"
+
+        collection = db[learned_params['collection']]
+        results = list(collection.find().sort(learned_params['field'], sort_order))
+
+        return find_command, results
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None, []
+
+def nlp_execute_distinct(prompt, db):
+    try:
+        # Initialize parameters
+        learned_params = {'collection': '', 'field': ''}
+
+        # Handle case where the prompt ends with "distinct"
+        if prompt.strip().endswith('distinct'):
+            collections = db.list_collection_names()
+            if not collections:
+                raise ValueError("No collections found in the database.")
+
+            # Randomly pick a collection
+            learned_params['collection'] = random.choice(collections)
+
+            # Fetch sample document to identify fields
+            sample_doc = db[learned_params['collection']].find_one()
+            if not sample_doc:
+                raise ValueError(f"The collection '{learned_params['collection']}' is empty.")
+
+            # Randomly pick a field
+            keys = list(sample_doc.keys())
+            keys.remove('_id')  # Exclude '_id'
+            learned_params['field'] = random.choice(keys)
+
+        else:
+            # Parse the prompt for collection and field
+            collections = db.list_collection_names()
+            for collection in collections:
+                if collection in prompt:
+                    learned_params['collection'] = collection
+                    break
+
+            if "of" in prompt:
+                learned_params['field'] = prompt.split("of")[1].split("from")[0].strip()
+
+        # Build the MongoDB distinct command
+        distinct_command = (
+            f"db.{learned_params['collection']}.distinct('{learned_params['field']}')"
+        )
+
+        # Execute the distinct query
+        collection = db[learned_params['collection']]
+        distinct_result = collection.distinct(learned_params['field'])
+
+        return distinct_command, distinct_result
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None, []
+
+def identify_mdb_keyword(prompt):
+    keywords = ['find','where','limit', 'limited','groupby','group', 'per', 'each', 'average', 'sum', 'count', 'min', 'max', 'orderby','order', 'distinct']
+    for k in keywords:
+        if k in prompt.split():
+            return k
+def mdb_response(prompt,db_connection):
+    kw = identify_mdb_keyword(prompt)
+    if kw == 'find':
+        return nlp_execute_find(prompt, db_connection)
+    if kw in ['limit', 'limited']:
+        return nlp_execute_limit(prompt, db_connection)
+    if kw in ['group', 'per','each','average','count','sum', 'min', 'max']:
+        return nlp_execute_groupby(prompt, db_connection)
+    if kw in ['orderby','order']:
+        return nlp_execute_orderby(prompt, db_connection)
+    if kw =='distinct':
+        return nlp_execute_distinct(prompt, db_connection)
+
+
+
 
