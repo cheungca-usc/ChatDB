@@ -1,16 +1,9 @@
 import mysql.connector
-import seaborn as sns
-from sqlalchemy import create_engine, inspect
-from sqlalchemy import text
+from sqlalchemy import create_engine, inspect, text
 import requests
 import pandas as pd
-import time
 import numpy as np
-from pandas.api.types import is_string_dtype
-from pandas.api.types import is_numeric_dtype
 import re
-from sqlalchemy.types import Integer
-from nltk.tokenize import word_tokenize
 from random import sample
 
 # DATABASE SETUP
@@ -239,10 +232,14 @@ def nlp_execute_where(prompt, db_connection):
         for log_op in ['and', 'or']:
             if log_op in where.split(' '):
                 learned_params['log_op'] = log_op
-                filters = where.split(log_op)
+                filters = where.split(f' {log_op} ')
+                break
             else:
-                filters.append(where)
-            break
+                if log_op == 'and':
+                    continue
+                else:
+                    filters.append(where)
+                
         for i in range(len(filters)):
             done = False
             for op in operator_dict:
