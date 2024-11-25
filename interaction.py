@@ -38,7 +38,7 @@ else:
     print("I did not recognize that option. Please try again.")
 
 x = input()
-# example url: https://raw.githubusercontent.com/cheungca-usc/ChatDB/refs/heads/main/spotify_data.csv
+# example url: https://raw.githubusercontent.com/cheungca-usc/ChatDB/refs/heads/main/databases/spotify_data.csv
 
 while x:
     if x == 'no':
