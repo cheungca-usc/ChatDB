@@ -135,10 +135,11 @@ def nlp_execute_limit(prompt, db):
                 learned_params['collection'] = collection
                 break
 
-        if 'columns' in words:
-            columns = prompt.split('columns')[1].split('from')[0].strip()
-            learned_params['projection'] = [col.strip() for col in columns.split(',')]
-
+        prompt = ' '.join(prompt.split(' ')[1:]).strip()
+        if prompt.startswith('all columns') or 'from' not in prompt:
+            learned_params['projection'] = []
+        else:
+            learned_params['projection'] = prompt.split('from')[0].strip().split(',')
         collection = learned_params['collection']
         projection = {field: 1 for field in learned_params['projection']} if learned_params['projection'] else None
         limit = learned_params['limit']
@@ -239,7 +240,7 @@ def nlp_execute_groupby(prompt, db):
 def nlp_execute_orderby(prompt, db):
     '''natural language processing for prompt to execute orderby queries'''
     try:
-        learned_params = {'collection': '', 'field': '', 'order': ''}
+        learned_params = {'collection': '', 'field': '', 'order': '','projection':''}
 
         if prompt.strip().endswith('orderby'):
             collections = db.list_collection_names()
@@ -276,9 +277,17 @@ def nlp_execute_orderby(prompt, db):
                 learned_params['order'] = 'desc'
             else:
                 learned_params['order'] = 'asc'
+        prompt = ' '.join(prompt.split(' ')[1:]).strip()
+        if prompt.startswith('all columns') or 'from' not in prompt:
+            learned_params['projection'] = []
+        else:
+            learned_params['projection'] = prompt.split('from')[0].strip().split(',')
+        projection = {field: 1 for field in learned_params['projection']} if learned_params['projection'] else {'_id': 0}
 
         sort_order = 1 if learned_params['order'] == 'asc' else -1
         find_command = f"db.{learned_params['collection']}.find().sort({{{learned_params['field']}: {sort_order}}})"
+        if projection:
+            find_command = f"db.{learned_params['collection']}.find({{}}, {projection}).sort({{{learned_params['field']}: {sort_order}}})"
 
         collection = db[learned_params['collection']]
         results = list(collection.find().sort(learned_params['field'], sort_order))
