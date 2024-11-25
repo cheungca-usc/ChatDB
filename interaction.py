@@ -1,3 +1,4 @@
+
 from SQL_command import SQL_db_connect, SQL_load_default, SQL_rename, SQL_upload, SQL_overview, SQL_get_columns, SQL_view_column, join_clause, from_clause, filter_clause, where_clause, groupby_clause, agg_clause, select_clause, orderby_clause, limit_clause, execute_query, construct_where, nlp_execute_where, construct_orderby, nlp_execute_orderby, construct_limit, nlp_execute_limit, construct_join, nlp_execute_join, construct_groupby, nlp_execute_groupby, clean_prompt, identify_keyword, respond
 from mdb_command import MDB_db_connect,MDB_upload,MDB_overview,mdb_response
 conn = SQL_db_connect()
@@ -21,7 +22,6 @@ if x=='1':
 
     SQL_overview(conn)
 
-    print('Would you like to upload your own table(s)?')
     db_type = 'SQL'
     
 elif x=='2':
@@ -32,30 +32,44 @@ elif x=='2':
     ''')
     MDB_overview(mdb_conn)
 
-    print('Would you like to upload your own table(s)?')
     db_type = 'NoSQL'
 else:
     print("I did not recognize that option. Please try again.")
 
-x = input()
-# example url: https://raw.githubusercontent.com/cheungca-usc/ChatDB/refs/heads/main/databases/spotify_data.csv
+while True:
+    print("Do you want to upload a dataset? (yes/no)")
+    x = input().strip().lower()
 
-while x:
-    if x == 'no':
+    if x == 'yes':
+        while True:
+            print(f"Enter the URL of your {db_type} dataset:")
+            y = input().strip()
+
+                # Validate the URL
+            if y.strip().startswith("http"):
+                break
+            else:
+                print("Invalid URL. Please enter a valid URL.")
+
+        print("What is the name of this dataset?")
+        z = input().strip()
+        dataset_name = z
+
+        if db_type == 'SQL':
+            SQL_upload(y, dataset_name, conn)
+        elif db_type == 'NoSQL':
+            MDB_upload(y, mdb_conn, z)
+
+        print(f"Your dataset, {dataset_name}, has been added to the database.")
+        print("Anything else? (Enter 'no' to exit or 'yes' to add another dataset)")
+        x = input().strip().lower()
+
+    elif x == 'no':
         break
 
-    print(f"Enter URL of your {db_type} dataset")
-    y = input()
-    print(f"What is the name of this dataset?")
-    z = input()
-    dataset_name = z
-    if db_type == 'SQL':
-        SQL_upload(y, dataset_name, conn)
-    if db_type == 'NoSQL':
-        MDB_upload(y,mdb_conn,z)
-    print(f'Your dataset, {dataset_name}, has been added to the database')
-    print("Anything else? (Enter 'no' to exit)")
-    x = input()
+    else:
+        print("Invalid input. Please answer 'yes' or 'no'.")
+
 
 print("What kind of query are you interested in?")
 x = input()
