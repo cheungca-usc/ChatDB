@@ -1,9 +1,7 @@
 
 from SQL_command import SQL_db_connect, SQL_load_default, SQL_rename, SQL_upload, SQL_overview, SQL_get_columns, SQL_view_column, join_clause, from_clause, filter_clause, where_clause, groupby_clause, agg_clause, select_clause, orderby_clause, limit_clause, execute_query, construct_where, nlp_execute_where, construct_orderby, nlp_execute_orderby, construct_limit, nlp_execute_limit, construct_join, nlp_execute_join, construct_groupby, nlp_execute_groupby, clean_prompt, identify_keyword, respond
 from mdb_command import MDB_db_connect,MDB_upload,MDB_overview,mdb_response
-conn = SQL_db_connect()
-SQL_load_default(conn)
-mdb_conn = MDB_db_connect()
+
 print('''Hello! I am ChatDB. I can help you generate SQL and NoSQL queries. 
 
 To start, please choose a database: 
@@ -20,7 +18,8 @@ while True:
         imdb_movie - the top 1000 movies on imdb
         imdb_tv - the top 1000 tv shows on imdb
         netflix - netflix titles \n''')
-
+        conn = SQL_db_connect()
+        SQL_load_default(conn)
         SQL_overview(conn)
 
         db_type = 'SQL'
@@ -31,6 +30,7 @@ while True:
         bezdekIris - the 50 instances of 3 types of bezdekIris
         water_quality - the water quality in different regions in LA\n
         ''')
+        mdb_conn = MDB_db_connect()
         MDB_overview(mdb_conn)
 
         db_type = 'NoSQL'
@@ -39,10 +39,10 @@ while True:
         print("I did not recognize that option. Please choose option 1 or 2.")
         x = input()
 
-while True:
-    print("Do you want to upload a dataset? (yes/no)")
-    x = input().strip().lower()
+print("Do you want to upload a dataset? (yes/no)")
+x = input().strip().lower()
 
+while True:
     if x == 'yes':
         while True:
             print(f"Enter the URL of your {db_type} dataset:")
@@ -105,6 +105,7 @@ while True:
 
 print("Goodbye!")
 
-conn.close()
+if db_type == 'SQL':
+    conn.close()
 
 
