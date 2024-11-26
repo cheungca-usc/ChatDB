@@ -55,8 +55,23 @@ def nlp_execute_find(prompt, db):
             if not collections:
                 raise ValueError("No collections found in the database.")
 
-            learned_params['collection'] = random.choice(collections)
+            collection = random.choice(collections)
+            all_fields = db[collection].find_one()
+            random_fields = sample(list(all_fields.keys()), random.randint(1, len(all_fields)))
+            learned_params['projection'] = {field: 1 for field in random_fields if field != '_id'}
+            learned_params['projection']['_id'] = 0
+            numeric_fields = [field for field in all_fields if isinstance(all_fields[field], (int, float))]
+            if numeric_fields:
+                random_field = random.choice(numeric_fields)
+                random_value = all_fields[random_field]
+                learned_params['query'] = {random_field: {'$gt': random_value * 0.5}}
+            command = f"db.{collection}.find({learned_params['query']}, {learned_params['projection']}))"
 
+            # Execute the query
+            collection_obj = db[collection]
+            results = list(collection_obj.find(learned_params['query'],learned_params['projection']))
+
+            return command, results
         else:
             collections = db.list_collection_names()
             for collection in collections:
@@ -89,10 +104,15 @@ def nlp_execute_find(prompt, db):
         if prompt.startswith('all columns') or 'from' not in prompt:
             learned_params['projection'] = []
         else:
-            learned_params['projection'] = prompt.split('from')[0].strip().split(',')
-        find_command = f"db.{learned_params['collection']}.find({learned_params['query']})"
+            projection_part = prompt.split('from')[0].strip().split(',')
+            fields = [field.strip() for field in projection_part if field.strip()]
+            learned_params['projection'] = {field: 1 for field in fields}
+        if '_id' not in learned_params['projection']:
+            learned_params['projection']['_id'] = 0
+        find_command = f"db.{learned_params['collection']}.find({learned_params['query']}"
         if learned_params['projection']:
             find_command += f", {learned_params['projection']}"
+        find_command += ")"
 
         collection = db[learned_params['collection']]
         find_result = list(collection.find(learned_params['query'], learned_params['projection']))
