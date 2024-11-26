@@ -81,25 +81,37 @@ x = input()
 while True:
     if x == 'no':
         break
-    
-    try:    
-        if db_type == 'SQL':
-            print("\nHere is a SQL query to fit your request.\n")
-            print("Command:")
-            response = respond(x, conn)
-            print(response[0])
-            print("\nOutput:")
-            print(response[1])
-        else:
-            print("\nHere is a MongoDB(NoSQL) query to fit your request.\n")
-            print("Command:")
-            response = mdb_response(x,mdb_conn)
-            print(response[0])
-            print("\nOutput:")
-            print(response[1])
-        
-    except:
-        print("I did not recognize that. Please try a different prompt.")
+
+    if db_type == 'SQL':
+        while True:
+            try:
+                if x == 'no':
+                    break
+                response = respond(x, conn)
+                print("Command:")
+                print(response[0])  # Print the SQL command
+                print("\nOutput:")
+                print(response[1])  # Print the SQL query output
+                break  # Exit the loop if successful
+            except Exception as e:
+                print(f"An error occurred with the SQL command: {e}")
+                x = input("Please try again or enter a different prompt (Enter 'no' to exit):")
+    else:
+        while True:
+            try:
+                if x == 'no':
+                    break
+                response = mdb_response(x, mdb_conn)
+                print("Command:")
+                print(response[0])  # Print the MongoDB command
+                print("\nOutput:")
+                print(response[1])  # Print the MongoDB query output
+                break  # Exit the loop if successful
+            except Exception as e:
+                print(f"An error occurred with the MongoDB command: {e}")
+                x = input("Please try again or enter a different prompt (Enter 'no' to exit):")
+
+
         
     print("Anything else? (Enter 'no' to exit)")
     x = input()
