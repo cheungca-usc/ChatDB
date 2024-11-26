@@ -72,6 +72,7 @@ while True:
 
     else:
         print("Invalid input. Please answer 'yes' or 'no'.")
+        x = input().strip().lower()
 
 
 print("What kind of query are you interested in?")
