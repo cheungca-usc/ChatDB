@@ -154,7 +154,7 @@ def nlp_execute_limit(prompt, db):
     return command, results
 
 
-def nlp_execute_groupby(prompt, db):
+def nlp_execute_group(prompt, db):
     '''natural language processing for prompt to execute groupby queries'''
     try:
         operation_map = {
@@ -166,7 +166,9 @@ def nlp_execute_groupby(prompt, db):
             'minimum': '$min',
             'min': '$min',
             'maximum': '$max',
-            'max': '$max'
+            'max': '$max',
+            'highest': '$max',
+            'lowest': '$min'
         }
         learned_params = {
             'collection': '',
@@ -176,10 +178,9 @@ def nlp_execute_groupby(prompt, db):
         }
 
         collections = db.list_collection_names()
-
-        if prompt.strip().endswith("groupby"):
+        if prompt.strip().endswith("group"):
             learned_params['collection'] = random.choice(collections)
-            fields = db[learned_params['collection']].find_one().keys()
+            fields = list(db[learned_params['collection']].find_one().keys())
             learned_params['groupby_field'] = random.choice([f for f in fields if f != "_id"])
             learned_params['aggregation_field'] = random.choice(fields)
             learned_params['operation'] = random.choice(list(operation_map.values()))
@@ -225,7 +226,6 @@ def nlp_execute_groupby(prompt, db):
                 }
             }}
         ]
-        print(pipeline)
         aggregation_command = f"db.{learned_params['collection']}.aggregate({pipeline})"
 
         collection = db[learned_params['collection']]
@@ -237,12 +237,12 @@ def nlp_execute_groupby(prompt, db):
         print(f"An error occurred: {e}")
         return None, []
 
-def nlp_execute_orderby(prompt, db):
+def nlp_execute_sort(prompt, db):
     '''natural language processing for prompt to execute orderby queries'''
     try:
         learned_params = {'collection': '', 'field': '', 'order': '','projection':''}
 
-        if prompt.strip().endswith('orderby'):
+        if prompt.strip().endswith('sort'):
             collections = db.list_collection_names()
             if not collections:
                 raise ValueError("No collections found in the database.")
@@ -343,7 +343,7 @@ def nlp_execute_distinct(prompt, db):
 
 def identify_mdb_keyword(prompt):
     '''give keywords for natural language processing'''
-    keywords = ['find','select','where','limit', 'limited','groupby','group', 'per', 'each', 'average', 'sum', 'count', 'min', 'max', 'orderby','order', 'distinct']
+    keywords = ['find','select','where','limit', 'limited','group', 'per', 'each', 'average', 'sum', 'count', 'min', 'max', 'sort', 'distinct']
     for k in keywords:
         if k in prompt.split():
             return k
@@ -354,9 +354,9 @@ def mdb_response(prompt,db_connection):
     if kw in ['limit', 'limited']:
         return nlp_execute_limit(prompt, db_connection)
     if kw in ['group', 'per','each','average','count','sum', 'min', 'max']:
-        return nlp_execute_groupby(prompt, db_connection)
-    if kw in ['orderby','order']:
-        return nlp_execute_orderby(prompt, db_connection)
+        return nlp_execute_group(prompt, db_connection)
+    if kw in ['sort']:
+        return nlp_execute_sort(prompt, db_connection)
     if kw =='distinct':
         return nlp_execute_distinct(prompt, db_connection)
 

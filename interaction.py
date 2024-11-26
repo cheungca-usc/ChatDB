@@ -14,27 +14,30 @@ To start, please choose a database:
 db_type = ''
 
 x = input()
-if x=='1':
-    print('''The SQL database contains the following tables: 
-    imdb_movie - the top 1000 movies on imdb
-    imdb_tv - the top 1000 tv shows on imdb
-    netflix - netflix titles \n''')
+while True:
+    if x=='1':
+        print('''The SQL database contains the following tables: 
+        imdb_movie - the top 1000 movies on imdb
+        imdb_tv - the top 1000 tv shows on imdb
+        netflix - netflix titles \n''')
 
-    SQL_overview(conn)
+        SQL_overview(conn)
 
-    db_type = 'SQL'
-    
-elif x=='2':
-    print('''The NoSQL datbase contains the following tables: 
-    iris - the 50 instances of 3 types of iris 
-    bezdekIris - the 50 instances of 3 types of bezdekIris
-    water_quality - the water quality in different regions in LA\n
-    ''')
-    MDB_overview(mdb_conn)
+        db_type = 'SQL'
+        break
+    elif x=='2':
+        print('''The NoSQL datbase contains the following tables: 
+        iris - the 50 instances of 3 types of iris 
+        bezdekIris - the 50 instances of 3 types of bezdekIris
+        water_quality - the water quality in different regions in LA\n
+        ''')
+        MDB_overview(mdb_conn)
 
-    db_type = 'NoSQL'
-else:
-    print("I did not recognize that option. Please try again.")
+        db_type = 'NoSQL'
+        break
+    else:
+        print("I did not recognize that option. Please choose option 1 or 2.")
+        x = input()
 
 while True:
     print("Do you want to upload a dataset? (yes/no)")
