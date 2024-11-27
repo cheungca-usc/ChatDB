@@ -363,7 +363,7 @@ def nlp_execute_distinct(prompt, db):
 
 def identify_mdb_keyword(prompt):
     '''give keywords for natural language processing'''
-    keywords = ['find','select','where','limit', 'limited','group', 'per', 'each', 'average', 'sum', 'count', 'min', 'max', 'sort', 'distinct']
+    keywords = ['find','select','where','limit', 'limited','group', 'per', 'each', 'average', 'sum', 'count', 'min', 'max', 'sort','order', 'distinct']
     for k in keywords:
         if k in prompt.split():
             return k
@@ -375,7 +375,7 @@ def mdb_response(prompt,db_connection):
         return nlp_execute_limit(prompt, db_connection)
     if kw in ['group', 'per','each','average','count','sum', 'min', 'max']:
         return nlp_execute_group(prompt, db_connection)
-    if kw in ['sort']:
+    if kw in ['sort','order']:
         return nlp_execute_sort(prompt, db_connection)
     if kw =='distinct':
         return nlp_execute_distinct(prompt, db_connection)
