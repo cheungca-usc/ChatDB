@@ -26,22 +26,26 @@ WHERE
 - title, year from imdb_tv where year is before 2010 or year is later than 2016
 - title, year, genre from imdb_movie where gross is more than 50000000
 - Songs_Artist from spotify table where Songs_Artist is alphabetically before B
+
 ORDER BY
 - give me an example using order by
 - title from netflix table in ascending order by imdb_rating
 - imdb_id, title from imdb_tv in descending order by votes 
 - title, year, genre from imdb_movie in ascending order by year, descending order by genre
 - all columns from spotify table in descending order by Streams
+
 LIMIT
 - show me a query using limit
 - imdb_id from netflix table limited to the first 10
 - all columns from imdb_tv limited to the first 5
 - director from imdb_movie limited to the first 20
 - Songs_Artist, Streams from spotify table limited to the first 2
+
 JOIN
 - example using join
 - netflix title, year and imdb_tv genre, votes joined on imdb_id
 - netflix title and imdb_movie gross joined on title
+
 GROUP BY
 - give me an example using group by
 - number of netflix title per type and certificate
@@ -59,6 +63,7 @@ find
 - find sepal_width,class from bIris table where sepal_width greater than 1.4
 - find bIris where sepal_width less than 1.4
 - find bIris where sepal_width not equal to 1.4
+
 Group
 - Example using group
 - group iris by class and calculate the average of sepal_width
@@ -66,16 +71,19 @@ Group
 - group iris by class and calculate highest of sepal_width
 - group iris by class and count the class number
 - group iris by class and calculate the sum of sepal_width
+
 sort
 - Example using sort
 - order by sepal_width in iris with ascending
 - order by year in water_quality with descending
 - orderby sepal_width from iris by ascending
+
 Limit
 - Example using limit
 - Get limit 5 values of class from iris
 - get class from iris limit 5
 - all columns of limit 5 values for water_quality
+
 Distinct
 - Example using distinct
 - Get distinct values of class from iris
